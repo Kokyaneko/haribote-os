@@ -1,6 +1,7 @@
-.*.*swp
-.*.*swo
+.*.swp
+.*.swo
 
 a.out
 
 *.bin
+*.img
