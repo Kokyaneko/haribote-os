@@ -3,6 +3,11 @@
 
     ORG     0x7c00
 
+readloop:
+    MOV     SI,0
+
+; 最初の512バイト
+retry:
     MOV     AX, 0x0820
     MOV     ES, AX
     MOV     CH, 0
@@ -14,13 +19,34 @@
     MOV     BX, 0
     MOV     DL, 0x00        ; Aドライブ
     INT     0x13
-    JNC     next            ;問題がないなら次へ進む
-    JC      error
+    JNC     next            ; 問題がないなら次へ進む
+    ADD     SI,1
+    CMP     SI,5
+    JAE     error
+    MOV     AH,0x00
+    MOV     DL,0x00
+    INT     0x13
+    JMP     retry
 
+; それ以降
 next:
-    MOV AX,ES
+    CYLS EQU 10     ; 読み込むシリンダ数
+    MOV AX,ES       ; ループ1重目
     ADD AX,0x0020
     MOV ES,AX
+    ADD CL,1
+    CMP CL,18       ; CL<18なら読み込む
+    JBE readloop
+
+    MOV CL,1        ; ループ2重目
+    ADD DH,1
+    CMP DH,2
+    JB  readloop
+
+    MOV DH,0
+    MOV CH,1
+    CMP CH,CYLS
+    JB  readloop
 
 fin:
     HLT
