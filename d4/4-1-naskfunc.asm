@@ -1,4 +1,4 @@
-;nascfanc
+;naskfanc
 
 [BITS 32]
 
@@ -13,6 +13,6 @@ io_hlt:
     RET                 ;返り値
 write_mem8:
     MOV ECX,[ESP+4]     ; アドレス([ESP+4])読み込み
-    MOV AL,[ESP+8]      ; データ([ESP+8])読み込み
-    MOV [ECX],AL
+    MOV EDX,[ESP+8]     ; データ([ESP+8])読み込み
+    MOV [ECX],DL
     RET
