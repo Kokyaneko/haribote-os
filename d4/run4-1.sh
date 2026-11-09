@@ -8,10 +8,10 @@ nasm -f bin asmhead.asm -o asmhead.bin
 # 2. C言語とアセンブラ関数をコンパイル＆リンク
 nasm -f elf32 4-1-naskfunc.asm -o 4-1-naskfunc.o
 gcc -m32 -fno-pie -nostdlib -c 4-1-bootpack.c -o 4-1-bootpack.o
-ld -m elf_i386 -Ttext 0x00280000 --oformat binary -o 4-1-bootpack.hrb 4-1-bootpack.o 4-1-naskfunc.o
+ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o 4-1-bootpack.bin 4-1-bootpack.o 4-1-naskfunc.o
 
-# 3. asmhead.bin と bootpack.hrb を結合して haribote.sys を作成
-cat asmhead.bin 4-1-bootpack.hrb > 4-1-haribote.sys
+# 3. asmhead.bin と bootpack.bin を結合して haribote.sys を作成
+cat asmhead.bin 4-1-bootpack.bin > 4-1-haribote.sys
 
 # 4. フロッピーディスクイメージの作成
 dd if=/dev/zero of=4-1-haribote.img bs=512 count=2880 status=none

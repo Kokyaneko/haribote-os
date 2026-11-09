@@ -29,6 +29,7 @@ retry:
 
 next:
     CYLS EQU 10             ; 読み込みシリンダ数
+    MOV BYTE [0x0ff0],CYLS  ; 他のプログラムに共有
     MOV     AX,ES
     ADD     AX,0x0020       ; セグメントを512バイト分進める
     MOV     ES,AX
