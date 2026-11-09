@@ -14,3 +14,8 @@ void main(void){
         io_hlt();
      }
 }
+/*
+ other solutions
+ 1. char *p = 0xa0000とおいてi番目のときp+iにアクセスする.
+ 2. p[i]という形でポインタにアクセスする.
+*/
