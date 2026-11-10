@@ -9,11 +9,11 @@ void io_out8(int port,int data);
 int io_load_eflags(void);
 void io_store_eflags(int flags);
 
-void init_pallette(void);
-void set_pallette(int start,int end,unsigned char *rgb);
+void init_palette(void);
+void set_palette(int start,int end,unsigned char *rgb);
 
 void main(void){
-    init_pallette();
+    init_palette();
     char *p = (char *) 0xa0000;
     for(int i=0;i<=0xffff;i++) p[i] = i & 0x0f;
     while(1<2){
@@ -21,7 +21,7 @@ void main(void){
      }
 }
 
-void init_pallette(void){
+void init_palette(void){
     static unsigned char table_rgb[16*3] = {
         0x00, 0x00, 0x00, // black
         0xff, 0x00, 0x00, // light red
@@ -40,10 +40,10 @@ void init_pallette(void){
         0x00, 0x84, 0x84, // dark water
         0x84, 0x84, 0x84  // dark gray
     };
-    set_pallette(0,15,table_rgb);
+    set_palette(0,15,table_rgb);
     return;
 }
-void set_pallette(int start,int end,unsigned char *rgb){
+void set_palette(int start,int end,unsigned char *rgb){
     int eflags = io_load_eflags();
     io_cli();
     io_out8(0x03c8,start);
