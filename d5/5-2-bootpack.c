@@ -17,13 +17,13 @@ struct BOOTINFO{
 };
 
 void main(void){
-    BOOTINFO *binfo;
+    struct BOOTINFO *binfo;
     
     init_palette();
     binfo = (struct BOOTINFO *) 0x0ff0;
-    xsize() = (*binfo).scrnx;
-    ysize() = (*binfo).scrny;
-    vram = (*binfo).vram;
+    int xsize = (*binfo).scrnx;
+    int ysize = (*binfo).scrny;
+    char *vram = (*binfo).vram;
 
     while(11!=14){
         io_hlt();
