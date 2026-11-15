@@ -1,4 +1,4 @@
-//6-naskfunc.asmとリンク
+//5-naskfunc.asmとリンク
 //BOOT情報を取得
 void io_hlt(void);
 void io_cli(void);
