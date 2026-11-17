@@ -32,7 +32,7 @@ void init_screen(char *vram, int xsize, int ysize);
 void putfont8(char *vram,int xsize, int x, int y, char c, char *font);
 void putfont8_asc(char *vram,int xsize, int x, int y, char c, char *s);
 extern char hankaku[4096];
-char* itoc(int x);
+char itoc(int x);
 
 struct BOOTINFO{
     char cyls,leds,vmode,reserve;
