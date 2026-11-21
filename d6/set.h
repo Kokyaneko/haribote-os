@@ -33,6 +33,10 @@ struct BOOTINFO{
     char *vram;
 };
 
+void putfont8(char *vram,int xsize, int x, int y, char c, char *font);
+void putfont8_asc(char *vram,int xsize, int x, int y, char c, char *s);
+extern char hankaku[4096];
+
 // init GDT IDT
 struct SEGMENT_DESCRIPTOR{
     short limit_low, base_low;
