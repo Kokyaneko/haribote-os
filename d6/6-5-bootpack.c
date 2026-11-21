@@ -9,6 +9,7 @@ void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,cha
 void init_gdtidt(void);
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
 void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
+void init_pic(void);
 
 void main(void){
     init_palette();
@@ -105,5 +106,25 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar){
     gd->dw_count        = (ar >> 8) & 0xff;
     gd->access_right    = ar & 0xff;
     gd->offset_high     = (offset >> 16) & 0xffff;
+    return;
+}
+
+void init_pic(void){
+    io_out(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
+    io_out(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
+
+    io_out(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out(PIC1_ICW2, 0x20);
+    io_out(PIC1_ICW3, 1 << 2);
+    io_out(PIC1_ICW4, 0x01);
+
+    io_out(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out(PIC1_ICW2, 0x28);
+    io_out(PIC1_ICW3, 2   );
+    io_out(PIC1_ICW4, 0x01);
+
+    io_out(PIC0_IMR, 0xfb);
+    io_out(PIC1_IMR, 0xfb);
+
     return;
 }
