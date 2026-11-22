@@ -5,6 +5,7 @@ void io_out8(int port, int data);
 int io_load_eflags(void);
 void io_store_eflags(int eflags);
 
+#define ADR_BOOTINFO 0x0ff0
 
 // for graphic.c
 #define COL8_000000 0
@@ -81,3 +82,5 @@ void load_idtr(int limit, int addr);
 #define PIC1_ICW2       0x00a1
 #define PIC1_ICW3       0x00a1
 #define PIC1_ICW4       0x00a1
+
+void inthandler21(int *esp);
