@@ -69,8 +69,8 @@ void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,cha
 }
 
 void init_gdtidt(void){
-    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) 0x00270000;
-    struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) 0x00270000;
+    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT;
+    struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) ADR_IDT;
 
     // init GDT
     for(int i=0;i<8192;i++){
@@ -110,21 +110,21 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar){
 }
 
 void init_pic(void){
-    io_out(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
-    io_out(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
+    io_out8(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
+    io_out8(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
 
-    io_out(PIC1_ICW1, 0x11);//エッジトリガモード
-    io_out(PIC1_ICW2, 0x20);
-    io_out(PIC1_ICW3, 1 << 2);
-    io_out(PIC1_ICW4, 0x01);
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x20);
+    io_out8(PIC1_ICW3, 1 << 2);
+    io_out8(PIC1_ICW4, 0x01);
 
-    io_out(PIC1_ICW1, 0x11);//エッジトリガモード
-    io_out(PIC1_ICW2, 0x28);
-    io_out(PIC1_ICW3, 2   );
-    io_out(PIC1_ICW4, 0x01);
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x28);
+    io_out8(PIC1_ICW3, 2   );
+    io_out8(PIC1_ICW4, 0x01);
 
-    io_out(PIC0_IMR, 0xfb);
-    io_out(PIC1_IMR, 0xfb);
+    io_out8(PIC0_IMR, 0xfb);
+    io_out8(PIC1_IMR, 0xfb);
 
     return;
 }
