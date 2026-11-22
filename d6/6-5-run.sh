@@ -1,39 +1,72 @@
 #!/bin/bash
 set -e
 
-# 0. フォントファイル (hankaku.txt) がある場合は hankaku.c に変換してコンパイル
-if [ -f "hankaku.txt" ] && [ ! -f "hankaku.o" ]; then
+# イメージ作成対象を,A-Bの形で定義できる.
+A=6
+B=5
+
+# ファイル名を自動で組み立て
+BOOTPACK_C="${A}-${B}-bootpack.c"
+BOOTPACK_O="${A}-${B}-bootpack.o"
+BOOTPACK_BIN="${A}-${B}-bootpack.bin"
+SYS_FILE="${A}-${B}-haribote.sys"
+IMG_FILE="${A}-${B}-haribote.img"
+
+echo "=== Building Haribote OS (${A}-${B}) ==="
+
+# 1. ipl10.bin のビルド
+if [ ! -f ipl10.bin ] || [ ipl10.asm -nt ipl10.bin ]; then
+    echo "[+] Assembling ipl10.asm"
+    nasm -f bin ipl10.asm -o ipl10.bin
+fi
+
+# 2. asmhead.bin のビルド
+if [ ! -f asmhead.bin ] || [ asmhead.asm -nt asmhead.bin ]; then
+    echo "[+] Assembling asmhead.asm"
+    nasm -f bin asmhead.asm -o asmhead.bin
+fi
+
+# 3. アセンブラ関数 (naskfunc.o) のビルド
+if [ ! -f naskfunc.o ] || [ naskfunc.asm -nt naskfunc.o ]; then
+    echo "[+] Compiling naskfunc.asm"
+    nasm -f elf32 naskfunc.asm -o naskfunc.o
+fi
+
+# 4. フォントファイル (hankaku.c / hankaku.o) のビルド
+if [ -f "hankaku.txt" ] && ( [ ! -f "hankaku.o" ] || [ hankaku.txt -nt hankaku.c ] ); then
+    echo "[+] Generating font data"
     python3 makefont.py hankaku.txt hankaku.c
     gcc -m32 -fno-pie -nostdlib -c hankaku.c -o hankaku.o
 fi
 
-# 1. ブートセクタと asmhead をバイナリとしてアセンブル
-nasm -f bin ipl10.asm -o ipl10.bin
-nasm -f bin asmhead.asm -o asmhead.bin
-
-# 2. C言語とアセンブラ関数をコンパイル＆リンク
-nasm -f elf32 naskfunc.asm -o naskfunc.o
-gcc -m32 -fno-pie -nostdlib -c 6-5-bootpack.c -o 6-5-bootpack.o
-gcc -m32 -fno-pie -nostdlib -c graphic.c -o graphic.o
-
-# フォントオブジェクト (hankaku.o) が存在する場合は一緒にリンクする
-if [ -f "hankaku.o" ]; then
-    ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o 6-5-bootpack.bin 6-5-bootpack.o graphic.o naskfunc.o hankaku.o
-else
-    ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o 6-5-bootpack.bin 6-5-bootpack.o graphic.o naskfunc.o
+# 5. C言語メインファイル (${BOOTPACK_C}) のビルド
+if [ ! -f "${BOOTPACK_O}" ] || [ "${BOOTPACK_C}" -nt "${BOOTPACK_O}" ] || [ -f "set.h" ] && [ "set.h" -nt "${BOOTPACK_O}" ]; then
+    echo "[+] Compiling ${BOOTPACK_C}"
+    gcc -m32 -fno-pie -nostdlib -c "${BOOTPACK_C}" -o "${BOOTPACK_O}"
 fi
 
-# 3. asmhead.bin と bootpack.bin を結合して 6-5-haribote.sys を作成
-cat asmhead.bin 6-5-bootpack.bin > 6-5-haribote.sys
+# 6. リンカによる結合
+if [ ! -f "${BOOTPACK_BIN}" ] || [ "${BOOTPACK_O}" -nt "${BOOTPACK_BIN}" ] || [ naskfunc.o -nt "${BOOTPACK_BIN}" ] || ( [ -f "hankaku.o" ] && [ hankaku.o -nt "${BOOTPACK_BIN}" ] ); then
+    echo "[+] Linking ${BOOTPACK_BIN}"
+    if [ -f "hankaku.o" ]; then
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o hankaku.o
+    else
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o
+    fi
+fi
 
-# 4. フロッピーディスクイメージの作成
-dd if=/dev/zero of=6-5-haribote.img bs=512 count=2880 status=none
+# 7. sysファイルの作成
+if [ ! -f "${SYS_FILE}" ] || [ asmhead.bin -nt "${SYS_FILE}" ] || [ "${BOOTPACK_BIN}" -nt "${SYS_FILE}" ]; then
+    echo "[+] Creating ${SYS_FILE}"
+    cat asmhead.bin "${BOOTPACK_BIN}" > "${SYS_FILE}"
+fi
 
-# 5. セクタ0に ipl10.bin を書き込む
-dd if=ipl10.bin of=6-5-haribote.img bs=512 seek=0 conv=notrunc status=none
+# 8. フロッピーイメージの作成
+echo "[+] Generating floppy image (${IMG_FILE})"
+dd if=/dev/zero of="${IMG_FILE}" bs=512 count=2880 status=none
+dd if=ipl10.bin of="${IMG_FILE}" bs=512 seek=0 conv=notrunc status=none
+dd if="${SYS_FILE}" of="${IMG_FILE}" bs=512 seek=1 conv=notrunc status=none
 
-# 6. セクタ1以降に 6-5-haribote.sys を書き込む
-dd if=6-5-haribote.sys of=6-5-haribote.img bs=512 seek=1 conv=notrunc status=none
-
-# 7. QEMUで起動
-qemu-system-i386 -fda 6-5-haribote.img
+# 9. QEMU起動
+echo "[+] Starting QEMU"
+qemu-system-i386 -fda "${IMG_FILE}"
