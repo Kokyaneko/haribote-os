@@ -1,0 +1,653 @@
+//naskfunc.asmとリンク
+//BOOT情報を取得
+
+#include "set.h"
+
+void init_mouse_cursor8(char *mouse,char bc);
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize);
+
+void init_gdtidt(void);
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
+
+void main(void){
+    init_palette();
+    struct BOOTINFO *binfo;
+    binfo = (struct BOOTINFO *) 0x0ff0;
+
+    init_screen(binfo->vram,binfo->scrnx,binfo->scrny);
+    putfont8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF, "ABC 123" );
+    putfont8_asc(binfo->vram,binfo->scrnx,30,30,COL8_000000, "Haribote OS" );
+    putfont8_asc(binfo->vram,binfo->scrnx,31,31,COL8_FFFFFF, "Haribote OS" );//make string 3D
+
+    char mcursor[256];
+    init_mouse_cursor8(mcursor,COL8_008484);
+    int mx = (binfo->scrnx)/2;
+    int my = (binfo->scrny)/2;
+    putblock8_8(binfo->vram,binfo->scrnx,16,16,mx,my,mcursor,16);
+
+    while(11!=14){
+        io_hlt();
+    }
+}
+
+void init_mouse_cursor8(char *mouse,char bc){
+    static char cursor[16][16] = {
+        "************....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOO*.....",
+        "*OOOOOOOO*......",
+        "*OOOOOOO*.......",
+        "*OOOOOOO*.......",
+        "*OOOOOOOO*......",
+        "*OOOO**OOO*.....",
+        "*OOO*..*OOO*....",
+        "*OO*....*OOO*...",
+        "***......*OOO*..",
+        ".*........*OOO*.",
+        "...........*OOO*",
+        "............*OO*",
+        ".............***"
+    };
+    for(int i=0;i<16;i++){
+        for(int j=0;j<16;j++){
+            if(cursor[i][j] == '*') mouse[i*16+j] = COL8_000000;
+            if(cursor[i][j] == 'O') mouse[i*16+j] = COL8_FFFFFF;
+            if(cursor[i][j] == '.') mouse[i*16+j] = bc;
+        }
+    }
+    return;
+}
+
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize){
+    for(int i=0;i<pysize;i++){
+        for(int j=0;j<pxsize;j++) vram[(py0+i)*vxsize+(px0+j)] = buf[i*bxsize + j];
+    }
+    return;
+}
+
+void init_gdtidt(void){
+    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) 0x00270000;
+    struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) 0x00270000;
+
+    // init GDT
+    for(int i=0;i<8192;i++){
+        set_segmdesc(gdt + i,0,0,0);
+    }
+    set_segmdesc(gdt + 1,0xffffffff,0x00000000,0x4092);
+    set_segmdesc(gdt + 2,0x0007ffff,0x00280000,0x409a);
+    load_idtr(0x7ff,0x00270000);
+
+    // init IDT
+    for(int i=0;i<256;i++){
+        set_gatedesc(idt+i,0,0,0);
+    }
+    load_idtr(0x7ff, 0x26f800);
+    return;
+}
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar){
+    if(limit > 0xfffffa){
+        ar |= 0x8000;
+        limit /= 0x1000;
+    }
+    sd->limit_low   = limit & 0xffff;
+    sd->base_low    = base & 0xffff;
+    sd->base_mid        = (base >> 16) & 0xff;
+    sd->access_right    = ar & 0xff;
+    sd->limit_high      = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
+    sd->base_high       = (base >> 24) & 0xff;
+    return;
+}
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar){
+    gd->offset_low      = offset & 0xffff;
+    gd->selector        = selector;
+    gd->dw_count        = (ar >> 8) & 0xff;
+    gd->access_right    = ar & 0xff;
+    gd->offset_high     = (offset >> 16) & 0xffff;
+    return;
+}
+#!/bin/bash
+set -e
+
+# 0. フォントファイル (hankaku.txt) がある場合は hankaku.c に変換してコンパイル
+if [ -f "hankaku.txt" ] && [ ! -f "hankaku.o" ]; then
+    python3 makefont.py hankaku.txt hankaku.c
+    gcc -m32 -fno-pie -nostdlib -c hankaku.c -o hankaku.o
+fi
+
+# 1. ブートセクタと asmhead をバイナリとしてアセンブル
+nasm -f bin ipl10.asm -o ipl10.bin
+nasm -f bin asmhead.asm -o asmhead.bin
+
+# 2. C言語とアセンブラ関数をコンパイル＆リンク
+nasm -f elf32 naskfunc.asm -o naskfunc.o
+gcc -m32 -fno-pie -nostdlib -c 6-4-bootpack.c -o 6-4-bootpack.o
+gcc -m32 -fno-pie -nostdlib -c graphic.c -o graphic.o
+
+# フォントオブジェクト (hankaku.o) が存在する場合は一緒にリンクする
+if [ -f "hankaku.o" ]; then
+    ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o 6-4-bootpack.bin 6-4-bootpack.o graphic.o naskfunc.o hankaku.o
+else
+    ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o 6-4-bootpack.bin 6-4-bootpack.o graphic.o naskfunc.o
+fi
+
+# 3. asmhead.bin と bootpack.bin を結合して 6-4-haribote.sys を作成
+cat asmhead.bin 6-4-bootpack.bin > 6-4-haribote.sys
+
+# 4. フロッピーディスクイメージの作成
+dd if=/dev/zero of=6-4-haribote.img bs=512 count=2880 status=none
+
+# 5. セクタ0に ipl10.bin を書き込む
+dd if=ipl10.bin of=6-4-haribote.img bs=512 seek=0 conv=notrunc status=none
+
+# 6. セクタ1以降に 6-4-haribote.sys を書き込む
+dd if=6-4-haribote.sys of=6-4-haribote.img bs=512 seek=1 conv=notrunc status=none
+
+# 7. QEMUで起動
+qemu-system-i386 -fda 6-4-haribote.img
+//naskfunc.asmとリンク
+//BOOT情報を取得
+
+#include "set.h"
+
+void init_mouse_cursor8(char *mouse,char bc);
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize);
+
+void init_gdtidt(void);
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
+void init_pic(void);
+
+void main(void){
+    init_palette();
+    struct BOOTINFO *binfo;
+    binfo = (struct BOOTINFO *) 0x0ff0;
+
+    init_screen(binfo->vram,binfo->scrnx,binfo->scrny);
+    putfont8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF, "ABC 123" );
+    putfont8_asc(binfo->vram,binfo->scrnx,30,30,COL8_000000, "Haribote OS" );
+    putfont8_asc(binfo->vram,binfo->scrnx,31,31,COL8_FFFFFF, "Haribote OS" );//make string 3D
+
+    char mcursor[256];
+    init_mouse_cursor8(mcursor,COL8_008484);
+    int mx = (binfo->scrnx)/2;
+    int my = (binfo->scrny)/2;
+    putblock8_8(binfo->vram,binfo->scrnx,16,16,mx,my,mcursor,16);
+
+    while(11!=14){
+        io_hlt();
+    }
+}
+
+void init_mouse_cursor8(char *mouse,char bc){
+    static char cursor[16][16] = {
+        "************....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOO*.....",
+        "*OOOOOOOO*......",
+        "*OOOOOOO*.......",
+        "*OOOOOOO*.......",
+        "*OOOOOOOO*......",
+        "*OOOO**OOO*.....",
+        "*OOO*..*OOO*....",
+        "*OO*....*OOO*...",
+        "***......*OOO*..",
+        ".*........*OOO*.",
+        "...........*OOO*",
+        "............*OO*",
+        ".............***"
+    };
+    for(int i=0;i<16;i++){
+        for(int j=0;j<16;j++){
+            if(cursor[i][j] == '*') mouse[i*16+j] = COL8_000000;
+            if(cursor[i][j] == 'O') mouse[i*16+j] = COL8_FFFFFF;
+            if(cursor[i][j] == '.') mouse[i*16+j] = bc;
+        }
+    }
+    return;
+}
+
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize){
+    for(int i=0;i<pysize;i++){
+        for(int j=0;j<pxsize;j++) vram[(py0+i)*vxsize+(px0+j)] = buf[i*bxsize + j];
+    }
+    return;
+}
+
+void init_gdtidt(void){
+    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT;
+    struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) ADR_IDT;
+
+    // init GDT
+    for(int i=0;i<8192;i++){
+        set_segmdesc(gdt + i,0,0,0);
+    }
+    set_segmdesc(gdt + 1,0xffffffff,0x00000000,0x4092);
+    set_segmdesc(gdt + 2,0x0007ffff,0x00280000,0x409a);
+    load_idtr(0x7ff,0x00270000);
+
+    // init IDT
+    for(int i=0;i<256;i++){
+        set_gatedesc(idt+i,0,0,0);
+    }
+    load_idtr(0x7ff, 0x26f800);
+    return;
+}
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar){
+    if(limit > 0xfffffa){
+        ar |= 0x8000;
+        limit /= 0x1000;
+    }
+    sd->limit_low   = limit & 0xffff;
+    sd->base_low    = base & 0xffff;
+    sd->base_mid        = (base >> 16) & 0xff;
+    sd->access_right    = ar & 0xff;
+    sd->limit_high      = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
+    sd->base_high       = (base >> 24) & 0xff;
+    return;
+}
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar){
+    gd->offset_low      = offset & 0xffff;
+    gd->selector        = selector;
+    gd->dw_count        = (ar >> 8) & 0xff;
+    gd->access_right    = ar & 0xff;
+    gd->offset_high     = (offset >> 16) & 0xffff;
+    return;
+}
+
+void init_pic(void){
+    io_out8(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
+    io_out8(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
+
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x20);
+    io_out8(PIC1_ICW3, 1 << 2);
+    io_out8(PIC1_ICW4, 0x01);
+
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x28);
+    io_out8(PIC1_ICW3, 2   );
+    io_out8(PIC1_ICW4, 0x01);
+
+    io_out8(PIC0_IMR, 0xfb);
+    io_out8(PIC1_IMR, 0xfb);
+
+    return;
+}
+#!/bin/bash
+set -e
+
+# イメージ作成対象を,A-Bの形で定義できる.
+A=6
+B=5
+
+# ファイル名を自動で組み立て
+BOOTPACK_C="${A}-${B}-bootpack.c"
+BOOTPACK_O="${A}-${B}-bootpack.o"
+BOOTPACK_BIN="${A}-${B}-bootpack.bin"
+SYS_FILE="${A}-${B}-haribote.sys"
+IMG_FILE="${A}-${B}-haribote.img"
+
+echo "=== Building Haribote OS (${A}-${B}) ==="
+
+# 1. ipl10.bin のビルド
+if [ ! -f ipl10.bin ] || [ ipl10.asm -nt ipl10.bin ]; then
+    echo "[+] Assembling ipl10.asm"
+    nasm -f bin ipl10.asm -o ipl10.bin
+fi
+
+# 2. asmhead.bin のビルド
+if [ ! -f asmhead.bin ] || [ asmhead.asm -nt asmhead.bin ]; then
+    echo "[+] Assembling asmhead.asm"
+    nasm -f bin asmhead.asm -o asmhead.bin
+fi
+
+# 3. アセンブラ関数 (naskfunc.o) のビルド
+if [ ! -f naskfunc.o ] || [ naskfunc.asm -nt naskfunc.o ]; then
+    echo "[+] Compiling naskfunc.asm"
+    nasm -f elf32 naskfunc.asm -o naskfunc.o
+fi
+
+# 4. フォントファイル (hankaku.c / hankaku.o) のビルド
+if [ -f "hankaku.txt" ] && ( [ ! -f "hankaku.o" ] || [ hankaku.txt -nt hankaku.c ] ); then
+    echo "[+] Generating font data"
+    python3 makefont.py hankaku.txt hankaku.c
+    gcc -m32 -fno-pie -nostdlib -c hankaku.c -o hankaku.o
+fi
+
+# 5. C言語メインファイル (${BOOTPACK_C}) のビルド
+if [ ! -f "${BOOTPACK_O}" ] || [ "${BOOTPACK_C}" -nt "${BOOTPACK_O}" ] || [ -f "set.h" ] && [ "set.h" -nt "${BOOTPACK_O}" ]; then
+    echo "[+] Compiling ${BOOTPACK_C}"
+    gcc -m32 -fno-pie -nostdlib -c "${BOOTPACK_C}" -o "${BOOTPACK_O}"
+fi
+
+# 6. リンカによる結合
+if [ ! -f "${BOOTPACK_BIN}" ] || [ "${BOOTPACK_O}" -nt "${BOOTPACK_BIN}" ] || [ naskfunc.o -nt "${BOOTPACK_BIN}" ] || ( [ -f "hankaku.o" ] && [ hankaku.o -nt "${BOOTPACK_BIN}" ] ); then
+    echo "[+] Linking ${BOOTPACK_BIN}"
+    if [ -f "hankaku.o" ]; then
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o hankaku.o
+    else
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o
+    fi
+fi
+
+# 7. sysファイルの作成
+if [ ! -f "${SYS_FILE}" ] || [ asmhead.bin -nt "${SYS_FILE}" ] || [ "${BOOTPACK_BIN}" -nt "${SYS_FILE}" ]; then
+    echo "[+] Creating ${SYS_FILE}"
+    cat asmhead.bin "${BOOTPACK_BIN}" > "${SYS_FILE}"
+fi
+
+# 8. フロッピーイメージの作成
+echo "[+] Generating floppy image (${IMG_FILE})"
+dd if=/dev/zero of="${IMG_FILE}" bs=512 count=2880 status=none
+dd if=ipl10.bin of="${IMG_FILE}" bs=512 seek=0 conv=notrunc status=none
+dd if="${SYS_FILE}" of="${IMG_FILE}" bs=512 seek=1 conv=notrunc status=none
+
+# 9. QEMU起動
+echo "[+] Starting QEMU"
+qemu-system-i386 -fda "${IMG_FILE}"
+//naskfunc.asmとリンク
+//BOOT情報を取得
+
+#include "set.h"
+
+void init_mouse_cursor8(char *mouse,char bc);
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize);
+
+void init_gdtidt(void);
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
+void init_pic(void);
+
+void main(void){
+    init_palette();
+    struct BOOTINFO *binfo;
+    binfo = (struct BOOTINFO *) ADR_BOOTINFO;
+
+    init_screen(binfo->vram,binfo->scrnx,binfo->scrny);
+    putfont8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF, "ABC 123" );
+    putfont8_asc(binfo->vram,binfo->scrnx,30,30,COL8_000000, "Haribote OS" );
+    putfont8_asc(binfo->vram,binfo->scrnx,31,31,COL8_FFFFFF, "Haribote OS" );//make string 3D
+
+    char mcursor[256];
+    init_mouse_cursor8(mcursor,COL8_008484);
+    int mx = (binfo->scrnx)/2;
+    int my = (binfo->scrny)/2;
+    putblock8_8(binfo->vram,binfo->scrnx,16,16,mx,my,mcursor,16);
+
+    while(11!=14){
+        io_hlt();
+    }
+}
+
+void init_mouse_cursor8(char *mouse,char bc){
+    static char cursor[16][16] = {
+        "************....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOOO*....",
+        "*OOOOOOOOO*.....",
+        "*OOOOOOOO*......",
+        "*OOOOOOO*.......",
+        "*OOOOOOO*.......",
+        "*OOOOOOOO*......",
+        "*OOOO**OOO*.....",
+        "*OOO*..*OOO*....",
+        "*OO*....*OOO*...",
+        "***......*OOO*..",
+        ".*........*OOO*.",
+        "...........*OOO*",
+        "............*OO*",
+        ".............***"
+    };
+    for(int i=0;i<16;i++){
+        for(int j=0;j<16;j++){
+            if(cursor[i][j] == '*') mouse[i*16+j] = COL8_000000;
+            if(cursor[i][j] == 'O') mouse[i*16+j] = COL8_FFFFFF;
+            if(cursor[i][j] == '.') mouse[i*16+j] = bc;
+        }
+    }
+    return;
+}
+
+void putblock8_8(char *vram,int vxsize,int pxsize,int pysize,int px0,int py0,char *buf,int bxsize){
+    for(int i=0;i<pysize;i++){
+        for(int j=0;j<pxsize;j++) vram[(py0+i)*vxsize+(px0+j)] = buf[i*bxsize + j];
+    }
+    return;
+}
+
+void init_gdtidt(void){
+    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT;
+    struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) ADR_IDT;
+
+    // init GDT
+    for(int i=0;i<8192;i++){
+        set_segmdesc(gdt + i,0,0,0);
+    }
+    set_segmdesc(gdt + 1,0xffffffff,0x00000000,0x4092);
+    set_segmdesc(gdt + 2,0x0007ffff,0x00280000,0x409a);
+    load_idtr(0x7ff,0x00270000);
+
+    // init IDT
+    for(int i=0;i<256;i++){
+        set_gatedesc(idt+i,0,0,0);
+    }
+    load_idtr(0x7ff, 0x26f800);
+    return;
+}
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar){
+    if(limit > 0xfffffa){
+        ar |= 0x8000;
+        limit /= 0x1000;
+    }
+    sd->limit_low   = limit & 0xffff;
+    sd->base_low    = base & 0xffff;
+    sd->base_mid        = (base >> 16) & 0xff;
+    sd->access_right    = ar & 0xff;
+    sd->limit_high      = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
+    sd->base_high       = (base >> 24) & 0xff;
+    return;
+}
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar){
+    gd->offset_low      = offset & 0xffff;
+    gd->selector        = selector;
+    gd->dw_count        = (ar >> 8) & 0xff;
+    gd->access_right    = ar & 0xff;
+    gd->offset_high     = (offset >> 16) & 0xffff;
+    return;
+}
+
+void init_pic(void){
+    io_out8(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
+    io_out8(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
+
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x20);
+    io_out8(PIC1_ICW3, 1 << 2);
+    io_out8(PIC1_ICW4, 0x01);
+
+    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC1_ICW2, 0x28);
+    io_out8(PIC1_ICW3, 2   );
+    io_out8(PIC1_ICW4, 0x01);
+
+    io_out8(PIC0_IMR, 0xfb);
+    io_out8(PIC1_IMR, 0xfb);
+
+    return;
+}
+
+void inthandler21(int *esp){
+    struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
+    boxfill8(binfo->vram,binfo->scrnx,COL8_FFFFFF,0,0,32*8-1,15);
+    putfont8(binfo->vram,binfo->scrnx,0,0,COL8_FFFFFF,"INT 21(IRQ-1) : PS/2 keyboard");
+    while(810 != 114514){
+        io_hlt();
+    }
+}
+#!/bin/bash
+set -e
+
+# イメージ作成対象を,A-Bの形で定義できる.
+A=6
+B=6
+
+# ファイル名を自動で組み立て
+BOOTPACK_C="${A}-${B}-bootpack.c"
+BOOTPACK_O="${A}-${B}-bootpack.o"
+BOOTPACK_BIN="${A}-${B}-bootpack.bin"
+SYS_FILE="${A}-${B}-haribote.sys"
+IMG_FILE="${A}-${B}-haribote.img"
+
+echo "=== Building Haribote OS (${A}-${B}) ==="
+
+# 1. ipl10.bin のビルド
+if [ ! -f ipl10.bin ] || [ ipl10.asm -nt ipl10.bin ]; then
+    echo "[+] Assembling ipl10.asm"
+    nasm -f bin ipl10.asm -o ipl10.bin
+fi
+
+# 2. asmhead.bin のビルド
+if [ ! -f asmhead.bin ] || [ asmhead.asm -nt asmhead.bin ]; then
+    echo "[+] Assembling asmhead.asm"
+    nasm -f bin asmhead.asm -o asmhead.bin
+fi
+
+# 3. アセンブラ関数 (naskfunc.o) のビルド
+if [ ! -f naskfunc.o ] || [ naskfunc.asm -nt naskfunc.o ]; then
+    echo "[+] Compiling naskfunc.asm"
+    nasm -f elf32 naskfunc.asm -o naskfunc.o
+fi
+
+# 4. フォントファイル (hankaku.c / hankaku.o) のビルド
+if [ -f "hankaku.txt" ] && ( [ ! -f "hankaku.o" ] || [ hankaku.txt -nt hankaku.c ] ); then
+    echo "[+] Generating font data"
+    python3 makefont.py hankaku.txt hankaku.c
+    gcc -m32 -fno-pie -nostdlib -c hankaku.c -o hankaku.o
+fi
+
+# 5. C言語のビルド
+#   bootpack.c のコンパイル
+if [ ! -f "${BOOTPACK_O}" ] || [ "${BOOTPACK_C}" -nt "${BOOTPACK_O}" ] || [ -f "set.h" ] && [ "set.h" -nt "${BOOTPACK_O}" ]; then
+    echo "[+] Compiling ${BOOTPACK_C}"
+    gcc -m32 -fno-pie -nostdlib -c "${BOOTPACK_C}" -o "${BOOTPACK_O}"
+fi
+#    graphic.c のコンパイル
+if [ ! -f "graphic.o" ] || [ "graphic.c" -nt "graphic.o" ] || [ -f "set.h" ] && [ "set.h" -nt "graphic.o" ]; then
+    echo "[+] Compiling graphic.c"
+    gcc -m32 -fno-pie -nostdlib -c graphic.c -o graphic.o
+fi
+
+# 6. リンカによる結合
+if [ ! -f "${BOOTPACK_BIN}" ] || [ "${BOOTPACK_O}" -nt "${BOOTPACK_BIN}" ] || [ naskfunc.o -nt "${BOOTPACK_BIN}" ] || ( [ -f "hankaku.o" ] && [ hankaku.o -nt "${BOOTPACK_BIN}" ] ); then
+    echo "[+] Linking ${BOOTPACK_BIN}"
+    if [ -f "hankaku.o" ]; then
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o hankaku.o
+    else
+        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" naskfunc.o
+    fi
+fi
+
+# 7. sysファイルの作成
+if [ ! -f "${SYS_FILE}" ] || [ asmhead.bin -nt "${SYS_FILE}" ] || [ "${BOOTPACK_BIN}" -nt "${SYS_FILE}" ]; then
+    echo "[+] Creating ${SYS_FILE}"
+    cat asmhead.bin "${BOOTPACK_BIN}" > "${SYS_FILE}"
+fi
+
+# 8. フロッピーイメージの作成
+echo "[+] Generating floppy image (${IMG_FILE})"
+dd if=/dev/zero of="${IMG_FILE}" bs=512 count=2880 status=none
+dd if=ipl10.bin of="${IMG_FILE}" bs=512 seek=0 conv=notrunc status=none
+dd if="${SYS_FILE}" of="${IMG_FILE}" bs=512 seek=1 conv=notrunc status=none
+
+# 9. QEMU起動
+echo "[+] Starting QEMU"
+qemu-system-i386 -fda "${IMG_FILE}"
+// BIOS -> 32bit
+void io_hlt(void);
+void io_cli(void);
+void io_out8(int port, int data);
+int io_load_eflags(void);
+void io_store_eflags(int eflags);
+
+#define ADR_BOOTINFO 0x0ff0
+
+// for graphic.c
+#define COL8_000000 0
+#define COL8_FF0000 1
+#define COL8_00FF00 2
+#define COL8_FFFF00 3
+#define COL8_0000FF 4
+#define COL8_FF00FF 5
+#define COL8_00FFFF 6
+#define COL8_FFFFFF 7
+#define COL8_C6C6C6 8
+#define COL8_840000 9
+#define COL8_008400 10
+#define COL8_848400 11
+#define COL8_000084 12
+#define COL8_840084 13
+#define COL8_008484 14
+#define COL8_848484 15
+
+void init_palette(void);
+void set_palette(int start, int end, unsigned char *rgb);
+void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1);
+void init_screen(char *vram, int xsize, int ysize);
+
+struct BOOTINFO{
+    char cyls,leds,vmode,reserve;
+    short scrnx,scrny;
+    char *vram;
+};
+
+void putfont8(char *vram,int xsize, int x, int y, char c, char *font);
+void putfont8_asc(char *vram,int xsize, int x, int y, char c, char *s);
+extern char hankaku[4096];
+
+
+// init GDT IDT
+struct SEGMENT_DESCRIPTOR{
+    short limit_low, base_low;
+    char base_mid, access_right;
+    char limit_high, base_high;
+};
+
+struct GATE_DESCRIPTOR{
+    short offset_low,selector;
+    char dw_count, access_right;
+    short offset_high;
+};
+
+void init_gdtidt(void);
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar);
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
+
+void load_gdtr(int limit, int addr);
+void load_idtr(int limit, int addr);
+
+#define ADR_IDT         0x0026f800
+#define LIMIT_IDT       0x000007ff
+#define ADR_GDT         0x00270000
+#define LIMIT_GDT       0x0000ffff
+#define ADR_BOTPAK      0x00280000
+#define LIMIT_BOTPAK    0x0007ffff
+#define AR_DATA32_RW    0x4092
+#define AR_CODE32_ER    0x409a
+
+#define PIC0_ICW1       0x0020
+#define PIC0_OCW2       0x0020
+#define PIC0_IMR        0x0021
+#define PIC0_ICW2       0x0021
+#define PIC0_ICW3       0x0021
+#define PIC0_ICW4       0x0021
+#define PIC1_ICW1       0x00a0
+#define PIC1_OCW2       0x00a0
+#define PIC1_IMR        0x00a1
+#define PIC1_ICW2       0x00a1
+#define PIC1_ICW3       0x00a1
+#define PIC1_ICW4       0x00a1
+
+void inthandler21(int *esp);

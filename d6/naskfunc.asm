@@ -7,6 +7,7 @@ section .text
     GLOBAL  io_out8, io_out16, io_out32
     GLOBAL  io_load_eflags, io_store_eflags
     GLOBAL  load_gdtr, load_idtr
+    EXTERN inthandler21, inthandler2c
 
 io_hlt:        ; void io_hlt(void);
     HLT
@@ -83,8 +84,7 @@ load_idtr:		; void load_idtr(int limit, int addr);
 	LIDT	[ESP+6]
 	RET
 
-    EXTERN inthandler21, inthandler2c
-
+; FILO型でデータを保存することで,エラー発生時に復旧がしやすい.
 asm_inthandler21:
     PUSH    ES
     PUSH    DS
@@ -95,6 +95,22 @@ asm_inthandler21:
     MOV     DS,AX
     MOV     ES,AX
     CALL    inthandler21
+    POP     EAX
+    POPAD
+    POP     DS
+    POP     ES
+    IRETD
+
+asm_inthandler2c:
+    PUSH    ES
+    PUSH    DS
+    PUSHAD
+    MOV     EAX,ESP
+    PUSH    EAX
+    MOV     AX,SS
+    MOV     DS,AX
+    MOV     ES,AX
+    CALL    inthandler2c
     POP     EAX
     POPAD
     POP     DS

@@ -12,6 +12,10 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 void init_pic(void);
 
 void main(void){
+	init_gdtidt();
+	init_pic();
+    io_sti();
+
     init_palette();
     struct BOOTINFO *binfo;
     binfo = (struct BOOTINFO *) ADR_BOOTINFO;
@@ -26,6 +30,9 @@ void main(void){
     int mx = (binfo->scrnx)/2;
     int my = (binfo->scrny)/2;
     putblock8_8(binfo->vram,binfo->scrnx,16,16,mx,my,mcursor,16);
+
+    io_out8(PIC0_IMR, 0xf9); /* PIC1とキーボードを許可(11111001) */
+    io_out8(PIC1_IMR, 0xef); /* マウスを許可(11101111) */
 
     while(11!=14){
         io_hlt();
@@ -85,6 +92,10 @@ void init_gdtidt(void){
         set_gatedesc(idt+i,0,0,0);
     }
     load_idtr(0x7ff, 0x26f800);
+
+    set_gatedesc(idt+0x21, (int) asm_inthandler21, 2*8, 0x008e);
+    set_gatedesc(idt+0x2c, (int) asm_inthandler2c, 2*8, 0x008e);
+
     return;
 }
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar){
@@ -136,4 +147,13 @@ void inthandler21(int *esp){
     while(810 != 114514){
         io_hlt();
     }
+}
+
+void inthandler2c(int *esp){
+	struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
+	boxfill8(binfo->vram, binfo->scrnx, COL8_000000, 0, 0, 32 * 8 - 1, 15);
+	putfont8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, "INT 2C (IRQ-12) : PS/2 mouse");
+    while(810 != 114514){
+		io_hlt();
+	}
 }
