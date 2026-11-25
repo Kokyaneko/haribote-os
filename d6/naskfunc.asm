@@ -7,7 +7,8 @@ section .text
     GLOBAL  io_out8, io_out16, io_out32
     GLOBAL  io_load_eflags, io_store_eflags
     GLOBAL  load_gdtr, load_idtr
-    EXTERN inthandler21, inthandler2c
+    GLOBAL  asm_inthandler21, asm_inthandler2c
+    EXTERN  inthandler21, inthandler2c
 
 io_hlt:        ; void io_hlt(void);
     HLT

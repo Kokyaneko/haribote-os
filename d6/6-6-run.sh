@@ -43,21 +43,21 @@ fi
 #   bootpack.c のコンパイル
 if [ ! -f "${BOOTPACK_O}" ] || [ "${BOOTPACK_C}" -nt "${BOOTPACK_O}" ] || [ -f "set.h" ] && [ "set.h" -nt "${BOOTPACK_O}" ]; then
     echo "[+] Compiling ${BOOTPACK_C}"
-    gcc -m32 -fno-pie -nostdlib -c "${BOOTPACK_C}" -o "${BOOTPACK_O}"
+    gcc -m32 -fno-pie -fno-asynchronous-unwind-tables -nostdlib -c "${BOOTPACK_C}" -o "${BOOTPACK_O}"
 fi
 #    graphic.c のコンパイル
 if [ ! -f "graphic.o" ] || [ "graphic.c" -nt "graphic.o" ] || [ -f "set.h" ] && [ "set.h" -nt "graphic.o" ]; then
     echo "[+] Compiling graphic.c"
-    gcc -m32 -fno-pie -nostdlib -c graphic.c -o graphic.o
+    gcc -m32 -fno-pie -fno-asynchronous-unwind-tables -nostdlib -c graphic.c -o graphic.o
 fi
 
-# 6. リンカによる結合
-if [ ! -f "${BOOTPACK_BIN}" ] || [ "${BOOTPACK_O}" -nt "${BOOTPACK_BIN}" ] || [ graphic.o -nt "${BOOTPACK_BIN}" ] || [ naskfunc.o -nt "${BOOTPACK_BIN}" ] || ( [ -f "hankaku.o" ] && [ hankaku.o -nt "${BOOTPACK_BIN}" ] ); then
+# 6. リンカによる結合 (har.ld を使用)
+if [ ! -f "${BOOTPACK_BIN}" ] || [ "${BOOTPACK_O}" -nt "${BOOTPACK_BIN}" ] || [ graphic.o -nt "${BOOTPACK_BIN}" ] || [ naskfunc.o -nt "${BOOTPACK_BIN}" ] || [ har.ld -nt "${BOOTPACK_BIN}" ] || ( [ -f "hankaku.o" ] && [ hankaku.o -nt "${BOOTPACK_BIN}" ] ); then
     echo "[+] Linking ${BOOTPACK_BIN}"
     if [ -f "hankaku.o" ]; then
-        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" graphic.o naskfunc.o hankaku.o
+        ld -m elf_i386 -T har.ld -e main -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" graphic.o naskfunc.o hankaku.o
     else
-        ld -m elf_i386 -Ttext 0x00280000 -e main --oformat binary -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" graphic.o naskfunc.o
+        ld -m elf_i386 -T har.ld -e main -o "${BOOTPACK_BIN}" "${BOOTPACK_O}" graphic.o naskfunc.o
     fi
 fi
 

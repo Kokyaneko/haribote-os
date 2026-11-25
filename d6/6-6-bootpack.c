@@ -12,13 +12,13 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 void init_pic(void);
 
 void main(void){
-	init_gdtidt();
-	init_pic();
-    io_sti();
-
     init_palette();
     struct BOOTINFO *binfo;
     binfo = (struct BOOTINFO *) ADR_BOOTINFO;
+  
+    init_gdtidt();
+	init_pic();
+    io_sti();
 
     init_screen(binfo->vram,binfo->scrnx,binfo->scrny);
     putfont8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF, "ABC 123" );
@@ -85,13 +85,13 @@ void init_gdtidt(void){
     }
     set_segmdesc(gdt + 1,0xffffffff,0x00000000,0x4092);
     set_segmdesc(gdt + 2,0x0007ffff,0x00280000,0x409a);
-    load_idtr(0x7ff,0x00270000);
+    load_gdtr(LIMIT_GDT, ADR_GDT);
 
     // init IDT
     for(int i=0;i<256;i++){
         set_gatedesc(idt+i,0,0,0);
     }
-    load_idtr(0x7ff, 0x26f800);
+    load_idtr(LIMIT_IDT, ADR_IDT);
 
     set_gatedesc(idt+0x21, (int) asm_inthandler21, 2*8, 0x008e);
     set_gatedesc(idt+0x2c, (int) asm_inthandler2c, 2*8, 0x008e);
@@ -124,10 +124,10 @@ void init_pic(void){
     io_out8(PIC0_IMR, 0xff);//すべての割り込みを受け付けない
     io_out8(PIC1_IMR, 0xff);//すべての割り込みを受け付けない
 
-    io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
-    io_out8(PIC1_ICW2, 0x20);
-    io_out8(PIC1_ICW3, 1 << 2);
-    io_out8(PIC1_ICW4, 0x01);
+    io_out8(PIC0_ICW1, 0x11);//エッジトリガモード
+    io_out8(PIC0_ICW2, 0x20);
+    io_out8(PIC0_ICW3, 1 << 2);
+    io_out8(PIC0_ICW4, 0x01);
 
     io_out8(PIC1_ICW1, 0x11);//エッジトリガモード
     io_out8(PIC1_ICW2, 0x28);
@@ -143,17 +143,14 @@ void init_pic(void){
 void inthandler21(int *esp){
     struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
     boxfill8(binfo->vram,binfo->scrnx,COL8_FFFFFF,0,0,32*8-1,15);
-    putfont8(binfo->vram,binfo->scrnx,0,0,COL8_FFFFFF,"INT 21(IRQ-1) : PS/2 keyboard");
-    while(810 != 114514){
-        io_hlt();
-    }
+    io_out8(PIC0_OCW2, 0x61);
+    putfont8_asc(binfo->vram,binfo->scrnx,0,0,COL8_000000,"INT 21(IRQ-1) : PS/2 keyboard");
 }
 
 void inthandler2c(int *esp){
 	struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
-	boxfill8(binfo->vram, binfo->scrnx, COL8_000000, 0, 0, 32 * 8 - 1, 15);
-	putfont8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_FFFFFF, "INT 2C (IRQ-12) : PS/2 mouse");
-    while(810 != 114514){
-		io_hlt();
-	}
+	boxfill8(binfo->vram, binfo->scrnx, COL8_FFFFFF, 0, 0, 32 * 8 - 1, 15);
+    io_out8(PIC1_OCW2, 0x64);
+    io_out8(PIC0_OCW2, 0x62);
+	putfont8_asc(binfo->vram, binfo->scrnx, 0, 0, COL8_000000, "INT 2C (IRQ-12) : PS/2 mouse");
 }

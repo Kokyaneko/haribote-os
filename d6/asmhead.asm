@@ -97,7 +97,7 @@ pipelineflush:
 ; bootpackの起動
 
                 MOV ESP,0x00300000
-                JMP DWORD 2*8:0000001b
+                JMP DWORD 2*8:00000000
 waitkbdout:
                 IN                 AL,0x64
                 AND                 AL,0x02
