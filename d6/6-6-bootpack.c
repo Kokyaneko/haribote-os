@@ -12,14 +12,13 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar);
 void init_pic(void);
 
 void main(void){
+    init_gdtidt();
+	init_pic();
+
     init_palette();
     struct BOOTINFO *binfo;
     binfo = (struct BOOTINFO *) ADR_BOOTINFO;
   
-    init_gdtidt();
-	init_pic();
-    io_sti();
-
     init_screen(binfo->vram,binfo->scrnx,binfo->scrny);
     putfont8_asc(binfo->vram,binfo->scrnx,8,8,COL8_FFFFFF, "ABC 123" );
     putfont8_asc(binfo->vram,binfo->scrnx,30,30,COL8_000000, "Haribote OS" );
@@ -33,6 +32,7 @@ void main(void){
 
     io_out8(PIC0_IMR, 0xf9); /* PIC1とキーボードを許可(11111001) */
     io_out8(PIC1_IMR, 0xef); /* マウスを許可(11101111) */
+    io_sti();
 
     while(11!=14){
         io_hlt();
@@ -99,7 +99,7 @@ void init_gdtidt(void){
     return;
 }
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar){
-    if(limit > 0xfffffa){
+    if(limit > 0xfffff){
         ar |= 0x8000;
         limit /= 0x1000;
     }
@@ -135,7 +135,7 @@ void init_pic(void){
     io_out8(PIC1_ICW4, 0x01);
 
     io_out8(PIC0_IMR, 0xfb);
-    io_out8(PIC1_IMR, 0xfb);
+    io_out8(PIC1_IMR, 0xff);
 
     return;
 }
