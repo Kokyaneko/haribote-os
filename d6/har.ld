@@ -3,7 +3,7 @@ OUTPUT_FORMAT("binary");
 SECTIONS
 {
     /* bootpack.bin のロード先（セグメント2のベースアドレス 0x00280000 からの相対オフセット 0） */
-    . = 0x00000000;
+    . = 0x00280000;
 
     .text : {
         /* 最初に実行される main() を含む bootpack.o を必ず先頭に配置する */

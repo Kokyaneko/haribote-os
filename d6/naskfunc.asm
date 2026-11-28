@@ -58,7 +58,7 @@ io_out16:
 
 io_out32:
     MOV     EDX,[ESP+4]
-    MOV     EAX,[ESP+8]
+    MOV     AL,[ESP+8]
     OUT     DX,EAX
     RET
 
